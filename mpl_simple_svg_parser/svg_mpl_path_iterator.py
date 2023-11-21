@@ -4,6 +4,11 @@
 # Copyright (c) Jae-Joon Lee.
 # Distributed under the terms of the Modified BSD License.
 
+# FIXME:
+# 1. we are not parseing things like joinstyle or cap style.
+# 2. clippath is parsed from defs but ignored for the rest of the code.
+# 3. only symbols are parsed from definitions.
+
 __all__ = [
     "SVGPathIterator",
     "SVGMplPathIterator",
@@ -26,7 +31,9 @@ import re
 p_rgb_color = re.compile(r"rgb\((.+)\%,\s*(.+)\%,\s*(.+)\%\)")
 p_hex_color = re.compile(r"(#[0-9a-fA-F]+)")
 
-p_namespace = re.compile(r'\s+xmlns="[^"]+"')
+p_namespace = re.compile(r'xmlns="[^"]+"')
+p_namespace_xlink = re.compile(r'xmlns\:xlink="[^"]+"')
+p_xlink_xlink = re.compile(r'xmlns\:xlink="[^"]+"')
 p_empty_color = re.compile(r'fill\s*=\s*(\"\"|\'\')')
 
 p_matrix = re.compile(r"matrix\s*\((.+)\)")
@@ -35,6 +42,7 @@ p_key_value = re.compile(r"([^:\s]+)\s*:\s*(.+)")
 
 def remove_ns(xmlstring):
     xmlstring = p_namespace.sub('', xmlstring, count=1)
+    xmlstring = p_namespace_xlink.sub('xmlns:xlink="xlink"', xmlstring, count=1)
     return xmlstring
 
 def fix_empty_color_string(xmlstring):
@@ -82,30 +90,109 @@ def get_mpl_colors(attrib, style, fc_default="k", ec_default="none"):
 
     return fc, ec
 
+def get_alpha(attrib, style):
+    """
+    Try to get alpha
+    """
+    alpha = 1
+    for d in [style, attrib]:
+        if "fill-opacity" in d:
+            alpha = float(d["fill-opacity"])
+
+    return alpha
+
 
 class SVGPathIterator:
     """
     Iterate over path definition of svg file. By default, it uses cairosvg to convert the input svg to more manageable form.
     """
-    def __init__(self, s, svg2svg=True):
+    def __init__(self, s, svg2svg=True,
+                 failover_width=1024, failover_height=1024):
 
         if svg2svg:
             xmlstring = fix_empty_color_string(s)
-            b_xmlstring = cairosvg.svg2svg(xmlstring, parent_width=800)
+            try:
+                b_xmlstring = cairosvg.svg2svg(xmlstring)
+            except ValueError:
+                b_xmlstring = cairosvg.svg2svg(xmlstring,
+                                               parent_width=failover_width,
+                                               parent_height=failover_height)
+
             xmlstring = remove_ns(b_xmlstring.decode("ascii"))
         else:
             xmlstring = remove_ns(s)
 
         self.svg = ET.fromstring(xmlstring)
+        self.groups = [c for c in self.svg.find("g") if c.tag == "g"]
 
-    def iter_path_attrib(self):
-        for c in self.svg.iter():
+        self.defs = self.parse_defs()
+
+        self.viewbox = self.parse_viewbox()
+
+    def parse_viewbox(self):
+        if "viewBox" in self.svg.attrib:
+            viewbox = [float(_) for _ in self.svg.attrib["viewBox"].split()]
+        else:
+            viewbox = None
+        return viewbox
+
+    def _parse_defs(self, parent, defs):
+        for c in parent:
+            if c.tag == "symbol":
+                symbol_id = c.attrib["id"]
+                defs[symbol_id] = c
+                # defs[symbol_id] = [(c1.attrib["d"], c1.attrib)
+                #                    for c1 in c.findall("path")]
+            elif c.tag == "clipPath":
+                _id = c.attrib["id"]
+                defs[_id] = c
+            elif c.tag == "g" and "id" in c.attrib:
+                _id = c.attrib["id"]
+                defs[_id] = c
+            elif c.tag == "g":
+                self._parse_defs(c, defs)
+
+    def parse_defs(self):
+        defs = dict()
+        p = self.svg.find("defs")
+        if p is None: return defs
+
+        self._parse_defs(p, defs)
+
+        return defs
+
+    def _iter_path_attrib(self, parent):
+        if parent is None:
+            return
+
+        for c in parent:
             if c.tag == "path":
                 d = c.attrib["d"]
+                yield d, c.attrib
+            if c.tag == "use":
+                href = c.attrib["{xlink}href"]
+                # FIXME: modifying parent's attrib can be potentially dangerous.
+                if "transform" in c.attrib:
+                    pass
+                    # parent.attrib["transform"] = c.attrib["transform"]
+                else:
+                    x = c.attrib.get("x", 0)
+                    y = c.attrib.get("y", 0)
+
+                    parent.attrib["xy"] = float(x), float(y)
+
+                for d, a in self._iter_path_attrib(self.defs.get(href[1:])):
+                    yield d, parent.attrib
+                    # print(c1)
+
+            elif c.tag == "g":
+                yield from self._iter_path_attrib(c)
             else:
                 continue
 
-            yield d, c.attrib
+    def iter_path_attrib(self, i=None):
+
+        yield from self._iter_path_attrib(self.svg.find("g"))
 
 
 class SVGMplPathIterator(SVGPathIterator):
@@ -115,23 +202,36 @@ class SVGMplPathIterator(SVGPathIterator):
 
         fc, ec = get_mpl_colors(attrib, style)
 
-        try:
-            mcolors.to_rgb(fc)
-        except ValueError:
-            warnings.warn(f"Ignoring unsupported facecolor: {fc}")
-            return None
+        # for now we only get the fill-opacity
+        alpha = get_alpha(style, attrib)
 
         try:
             mcolors.to_rgb(ec)
         except ValueError:
             warnings.warn(f"Ignoring unsupported edgecolor: {ec}")
-            return None
+            ec = "0.5"
+
+        try:
+            mcolors.to_rgb(fc)
+        except ValueError:
+            warnings.warn(f"Ignoring unsupported facecolor: {fc}")
+            fc = "c"
+            alpha = 0.2
 
         linewidth = float(style.get('stroke-width', 1))
 
-        return dict(fc=fc, ec=ec, lw=linewidth)
+        return dict(fc=fc, ec=ec, lw=linewidth, alpha=alpha)
 
     def get_affine_matrix(self, attrib):
+        # Not sure if this is rigorous treatment. xy attribute is inserted when
+        # symbole is used.
+        if "xy" in attrib:
+            x, y = attrib["xy"]
+            matrix = np.array([[1, 0, x],
+                               [0, 1, y],
+                               [0, 0, 1]])
+            return matrix
+
         st = attrib.get("transform", "")
 
         if st.startswith('matrix'):
@@ -148,24 +248,23 @@ class SVGMplPathIterator(SVGPathIterator):
                                [0, 1, 0],
                                [0, 0, 1]])
 
+
         return matrix
 
     def get_yinvert_transform(self):
-        height = (float(self.svg.attrib["viewBox"].split()[-1])
-                  if  "viewBox" in self.svg.attrib
-                  else 0)
+        height = 0 if self.viewbox is None else self.viewbox[-1]
 
         tr = Affine2D().scale(1, -1).translate(0, height)
 
         return tr
 
-    def iter_mpl_path_patch_prop(self, invert_y=True):
+    def iter_mpl_path_patch_prop(self, i=None, invert_y=True):
         if invert_y:
             tr_yinvert = self.get_yinvert_transform()
         else:
             tr_yinvert = Affine2D()
 
-        for d, attrib in self.iter_path_attrib():
+        for d, attrib in self.iter_path_attrib(i=i):
             patch_prop = self.get_patch_prop_from_attrib(attrib)
             if patch_prop is None:
                 continue
@@ -176,23 +275,32 @@ class SVGMplPathIterator(SVGPathIterator):
 
             yield p, patch_prop
 
-    def get_path_collection(self):
+    def get_path_collection(self, i=None):
         paths = []
         fcl = []
         ecl = []
         lwl = []
+        alphal = []
 
-        for p, d in self.iter_mpl_path_patch_prop():
+        for p, d in self.iter_mpl_path_patch_prop(i=i):
             paths.append(p)
             fcl.append(d["fc"])
             ecl.append(d["ec"])
             lwl.append(d["lw"])
+            alphal.append(d["alpha"])
 
+        # FIXME: when alpha is used for the facecolor and the ec is "none", it
+        # fails wth some examples (Steps.svg, alphachannel.svg). So, alpha is
+        # disabled for now.
         pc = PathCollection(paths, facecolors=fcl, edgecolors=ecl, linewidths=lwl)
+        # alpha=alphal)
         return pc
 
 def get_paths_extents(paths):
     bb = [p.get_extents() for p in paths]
+    if len(bb) == 0:
+        return None
+
     b0 = bb[0].union(bb)
 
     return b0
