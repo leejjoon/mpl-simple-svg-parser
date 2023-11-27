@@ -9,11 +9,22 @@
 # 2. clippath is parsed from defs but ignored for the rest of the code.
 # 3. only symbols are parsed from definitions.
 
+# cairosvg convert g with opacity to a mask. picosvg drops mask unfortunately.
+# We may implement mask feature in the future.
+
 __all__ = [
     "SVGPathIterator",
     "SVGMplPathIterator",
     "get_paths_extents"
 ]
+
+# pico
+# * clip-path works better
+# * evenodd works.
+# * better stroke (stroke is converted to fill)
+
+# issue : 
+# + cairosvg convert ellipse to path but does not close it. When picosvg convert the stroke to fill, this may introduce incorrect fill combined with clippath.
 
 import numpy as np
 import warnings
@@ -96,6 +107,8 @@ def get_alpha(attrib, style):
     """
     alpha = 1
     for d in [style, attrib]:
+        if "opacity" in d:
+            alpha = float(d["opacity"])
         if "fill-opacity" in d:
             alpha = float(d["fill-opacity"])
 
@@ -106,24 +119,70 @@ class SVGPathIterator:
     """
     Iterate over path definition of svg file. By default, it uses cairosvg to convert the input svg to more manageable form.
     """
-    def __init__(self, s, svg2svg=True,
+    def __init__(self, s, svg2svg=True, pico=False,
                  failover_width=1024, failover_height=1024):
 
+        # from picosvg.svg import SVG
+        # # s = b_xmlstring.decode("ascii")
+        # if pico:
+        #     svg = SVG.fromstring(s)
+        #     svg = svg.topicosvg(
+        #         allow_text=True, drop_unsupported=True
+        #     )
+        #     # svg.clip_to_viewbox(inplace=True)
+        #     xmlstring = svg.tostring(pretty_print=True)
+        #     xmlstring = remove_ns(xmlstring)
+        #     s = xmlstring
+
         if svg2svg:
-            xmlstring = fix_empty_color_string(s)
+            # FIXME remove encode and decode by using bytes only.
+            xmlstring = fix_empty_color_string(s.decode("ascii"))
             try:
-                b_xmlstring = cairosvg.svg2svg(xmlstring)
+                b_xmlstring = cairosvg.svg2svg(xmlstring.encode("ascii"))
             except ValueError:
-                b_xmlstring = cairosvg.svg2svg(xmlstring,
+                b_xmlstring = cairosvg.svg2svg(xmlstring.encode("ascii"),
                                                parent_width=failover_width,
                                                parent_height=failover_height)
 
-            xmlstring = remove_ns(b_xmlstring.decode("ascii"))
+            xmlstring = b_xmlstring.decode("ascii")
+            # xmlstring = remove_ns(b_xmlstring.decode("ascii"))
         else:
-            xmlstring = remove_ns(s)
+            # xmlstring = remove_ns(s)
+            xmlstring = s
+            # pass
 
-        self.svg = ET.fromstring(xmlstring)
-        self.groups = [c for c in self.svg.find("g") if c.tag == "g"]
+        # from picosvg.svg import SVG
+        from mpl_simple_svg_parser import picosvg
+
+        s = xmlstring
+        if pico:
+            svg = picosvg.SVG.fromstring(s)
+            svg = svg.topicosvg(
+                allow_text=True, drop_unsupported=False
+            )
+            # svg.clip_to_viewbox(inplace=True)
+            xmlstring = svg.tostring(pretty_print=True)
+            # xmlstring = remove_ns(xmlstring)
+            # xmlstring
+
+        self.xmlstring = remove_ns(xmlstring)
+
+
+        # if svg2svg:
+        #     try:
+        #         b_xmlstring = cairosvg.svg2svg(xmlstring)
+        #     except ValueError:
+        #         b_xmlstring = cairosvg.svg2svg(xmlstring,
+        #                                        parent_width=failover_width,
+        #                                        parent_height=failover_height)
+
+        #     xmlstring = remove_ns(b_xmlstring.decode("ascii"))
+        # else:
+        #     xmlstring = remove_ns(s)
+
+
+
+        self.svg = ET.fromstring(self.xmlstring)
 
         self.defs = self.parse_defs()
 
@@ -169,7 +228,11 @@ class SVGPathIterator:
             if c.tag == "path":
                 d = c.attrib["d"]
                 yield d, c.attrib
-            if c.tag == "use":
+            elif c.tag == "symbol":
+                c1 = c.find("path")
+                d = c1.attrib["d"]
+                yield d, c.attrib
+            elif c.tag == "use":
                 href = c.attrib["{xlink}href"]
                 # FIXME: modifying parent's attrib can be potentially dangerous.
                 if "transform" in c.attrib:
@@ -190,9 +253,9 @@ class SVGPathIterator:
             else:
                 continue
 
-    def iter_path_attrib(self, i=None):
+    def iter_path_attrib(self):
 
-        yield from self._iter_path_attrib(self.svg.find("g"))
+        yield from self._iter_path_attrib(self.svg)
 
 
 class SVGMplPathIterator(SVGPathIterator):
@@ -201,6 +264,7 @@ class SVGMplPathIterator(SVGPathIterator):
         style = parse_style(attrib.get("style", ""))
 
         fc, ec = get_mpl_colors(attrib, style)
+        fc_orig = None
 
         # for now we only get the fill-opacity
         alpha = get_alpha(style, attrib)
@@ -214,13 +278,15 @@ class SVGMplPathIterator(SVGPathIterator):
         try:
             mcolors.to_rgb(fc)
         except ValueError:
-            warnings.warn(f"Ignoring unsupported facecolor: {fc}")
-            fc = "c"
-            alpha = 0.2
+            # warnings.warn(f"Ignoring unsupported facecolor: {fc}")
+            fc_orig = fc
+            fc = "none"
+            # ec = "c"
+            # alpha = 0.2
 
         linewidth = float(style.get('stroke-width', 1))
 
-        return dict(fc=fc, ec=ec, lw=linewidth, alpha=alpha)
+        return dict(fc=fc, ec=ec, lw=linewidth, alpha=alpha, fc_orig=fc_orig)
 
     def get_affine_matrix(self, attrib):
         # Not sure if this is rigorous treatment. xy attribute is inserted when
@@ -258,13 +324,13 @@ class SVGMplPathIterator(SVGPathIterator):
 
         return tr
 
-    def iter_mpl_path_patch_prop(self, i=None, invert_y=True):
+    def iter_mpl_path_patch_prop(self, invert_y=True):
         if invert_y:
             tr_yinvert = self.get_yinvert_transform()
         else:
             tr_yinvert = Affine2D()
 
-        for d, attrib in self.iter_path_attrib(i=i):
+        for d, attrib in self.iter_path_attrib():
             patch_prop = self.get_patch_prop_from_attrib(attrib)
             if patch_prop is None:
                 continue
@@ -275,14 +341,14 @@ class SVGMplPathIterator(SVGPathIterator):
 
             yield p, patch_prop
 
-    def get_path_collection(self, i=None):
+    def get_path_collection(self):
         paths = []
         fcl = []
         ecl = []
         lwl = []
         alphal = []
 
-        for p, d in self.iter_mpl_path_patch_prop(i=i):
+        for p, d in self.iter_mpl_path_patch_prop():
             paths.append(p)
             fcl.append(d["fc"])
             ecl.append(d["ec"])
