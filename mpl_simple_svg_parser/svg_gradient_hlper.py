@@ -1,6 +1,10 @@
 import xml.etree.ElementTree as ET
 from mpl_simple_svg_parser.svg_mpl_path_iterator import remove_ns, SVGMplPathIterator
 
+
+# FIXME: for the pattern, we may create image from the cairosvg result. picosvg
+# support fo pattern s incorrect (w/ my modification) or limited.
+
 class GradientHelper:
     def __init__(self, svg):
         self.svg = svg # instance of SVGMplPathIterator
@@ -8,9 +12,13 @@ class GradientHelper:
         self.width, self.height = box[2], box[3]
 
     def list_gradient(self):
-        return list(self.svg.svg.find("defs"))
+        el = self.svg.svg.find("defs")
+        if el is None:
+            return []
+        else:
+            return list(self.svg.svg.find("defs"))
 
-    def get(self, gradient_elem):
+    def get(self, gradient_elem, add_all=False):
         template = """<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
              height="{height}" width="{width}">
           <defs>
@@ -25,7 +33,11 @@ class GradientHelper:
         svg_template = ET.fromstring(template)
         defs = svg_template.find("defs")
 
-        defs.append(gradient_elem)
+        if add_all:
+            for el in self.list_gradient():
+                defs.append(el)
+        else:
+            defs.append(gradient_elem)
 
         k = ET.tostring(svg_template)
         import cairosvg
@@ -40,9 +52,16 @@ class GradientHelper:
     def get_all(self):
         gradient_dict = dict()
 
+
         for gradient_elem in self.list_gradient():
-            gid = gradient_elem.attrib["id"]
-            arr = self.get(gradient_elem)
+            gid = gradient_elem.attrib.get("id", None)
+            if gid is None:
+                continue
+            if gradient_elem.tag == "pattern":
+                # We should add only necessary elements, not all elements.
+                arr = self.get(gradient_elem, add_all=True)
+            else:
+                arr = self.get(gradient_elem, add_all=False)
             gradient_dict[gid] = arr
 
         return gradient_dict
