@@ -29,7 +29,7 @@ class GradientHelper:
 
         box = self.svg.viewbox
         v = dict(width=box[2], height=box[3], gid=gradient_elem.attrib["id"])
-        template = remove_ns(template.format(**v))
+        template = remove_ns(template.format(**v).encode("ascii"))
         svg_template = ET.fromstring(template)
         defs = svg_template.find("defs")
 

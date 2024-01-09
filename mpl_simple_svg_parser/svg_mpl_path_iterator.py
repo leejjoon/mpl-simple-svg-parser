@@ -40,27 +40,28 @@ from matplotlib.transforms import Affine2D
 
 import re
 p_rgb_color = re.compile(r"rgb\((.+)\%,\s*(.+)\%,\s*(.+)\%\)")
+p_rgb_color_no_percent = re.compile(r"rgb\((.+),\s*(.+),\s*(.+)\)")
 p_hex_color = re.compile(r"(#[0-9a-fA-F]+)")
 
-p_namespace = re.compile(r'xmlns="[^"]+"')
-p_namespace_xlink = re.compile(r'xmlns\:xlink="[^"]+"')
+p_namespace = re.compile(rb'xmlns="[^"]+"')
+p_namespace_xlink = re.compile(rb'xmlns\:xlink="[^"]+"')
 p_xlink_xlink = re.compile(r'xmlns\:xlink="[^"]+"')
-p_empty_color = re.compile(r'fill\s*=\s*(\"\"|\'\')')
+p_empty_color = re.compile(rb'fill\s*=\s*(\"\"|\'\')')
 
 p_matrix = re.compile(r"matrix\s*\((.+)\)")
 p_comma_or_space = re.compile(r"(,|(\s+))")
 p_key_value = re.compile(r"([^:\s]+)\s*:\s*(.+)")
 
-def remove_ns(xmlstring):
-    xmlstring = p_namespace.sub('', xmlstring, count=1)
-    xmlstring = p_namespace_xlink.sub('xmlns:xlink="xlink"', xmlstring, count=1)
+def remove_ns(xmlstring: bytes) -> bytes:
+    xmlstring = p_namespace.sub(b'', xmlstring, count=1)
+    xmlstring = p_namespace_xlink.sub(b'xmlns:xlink="xlink"', xmlstring, count=1)
     return xmlstring
 
-def fix_empty_color_string(xmlstring):
+def fix_empty_color_string(xmlstring: bytes) -> bytes:
     """
     cairosvg seems to remove object with 'fill=""'. This replace it with 'fill="#000000"'.
     """
-    xmlstring = p_empty_color.sub('fill="#000000"', xmlstring, count=0)
+    xmlstring = p_empty_color.sub(b'fill="#000000"', xmlstring, count=0)
     return xmlstring
 
 def parse_style(style_string):
@@ -78,6 +79,8 @@ def convert_svg_color_to_mpl_color(color_string, default_color="none"):
     """
     if m := p_rgb_color.search(color_string):
         return np.array([float(_)/100. for _ in m.groups()])
+    if m := p_rgb_color_no_percent.search(color_string):
+        return np.array([float(_)/256. for _ in m.groups()])
 
     return default_color if color_string == "" else color_string
 
@@ -110,7 +113,7 @@ def get_alpha(attrib, style):
         if "opacity" in d:
             alpha = float(d["opacity"])
         if "fill-opacity" in d:
-            alpha = float(d["fill-opacity"])
+            alpha *= float(d["fill-opacity"])
 
     return alpha
 
@@ -119,53 +122,42 @@ class SVGPathIterator:
     """
     Iterate over path definition of svg file. By default, it uses cairosvg to convert the input svg to more manageable form.
     """
-    def __init__(self, s, svg2svg=True, pico=False,
+    def __init__(self, s: bytes, svg2svg=True, pico=False,
+                 pico_clip_viewbox=True,
                  failover_width=1024, failover_height=1024):
-
-        # from picosvg.svg import SVG
-        # # s = b_xmlstring.decode("ascii")
-        # if pico:
-        #     svg = SVG.fromstring(s)
-        #     svg = svg.topicosvg(
-        #         allow_text=True, drop_unsupported=True
-        #     )
-        #     # svg.clip_to_viewbox(inplace=True)
-        #     xmlstring = svg.tostring(pretty_print=True)
-        #     xmlstring = remove_ns(xmlstring)
-        #     s = xmlstring
 
         if svg2svg:
             # FIXME remove encode and decode by using bytes only.
-            xmlstring = fix_empty_color_string(s.decode("ascii"))
+            xmlstring = fix_empty_color_string(s)
             try:
-                b_xmlstring = cairosvg.svg2svg(xmlstring.encode("ascii"))
+                b_xmlstring = cairosvg.svg2svg(xmlstring)
             except ValueError:
-                b_xmlstring = cairosvg.svg2svg(xmlstring.encode("ascii"),
+                b_xmlstring = cairosvg.svg2svg(xmlstring,
                                                parent_width=failover_width,
                                                parent_height=failover_height)
 
-            xmlstring = b_xmlstring.decode("ascii")
+            # xmlstring = b_xmlstring.decode("ascii")
             # xmlstring = remove_ns(b_xmlstring.decode("ascii"))
         else:
             # xmlstring = remove_ns(s)
-            xmlstring = s
+            b_xmlstring = s
             # pass
 
         # from picosvg.svg import SVG
         from mpl_simple_svg_parser import picosvg
 
-        s = xmlstring
         if pico:
-            svg = picosvg.SVG.fromstring(s)
+            svg = picosvg.SVG.fromstring(b_xmlstring)
             svg = svg.topicosvg(
                 allow_text=True, drop_unsupported=False
             )
-            # svg.clip_to_viewbox(inplace=True)
-            xmlstring = svg.tostring(pretty_print=True)
+            if pico_clip_viewbox:
+                svg.clip_to_viewbox(inplace=True)
+            b_xmlstring = svg.tostring(pretty_print=True).encode("ascii")
             # xmlstring = remove_ns(xmlstring)
             # xmlstring
 
-        self.xmlstring = remove_ns(xmlstring)
+        self.xmlstring = remove_ns(b_xmlstring)
 
 
         # if svg2svg:
@@ -191,6 +183,10 @@ class SVGPathIterator:
     def parse_viewbox(self):
         if "viewBox" in self.svg.attrib:
             viewbox = [float(_) for _ in self.svg.attrib["viewBox"].split()]
+        elif "width" in self.svg.attrib and "height" in self.svg.attrib:
+            viewbox = [0, 0,
+                       float(self.svg.attrib["width"]),
+                       float(self.svg.attrib["height"])]
         else:
             viewbox = None
         return viewbox
@@ -220,18 +216,22 @@ class SVGPathIterator:
 
         return defs
 
-    def _iter_path_attrib(self, parent):
+    def _iter_path_attrib(self, parent, attrib=None):
         if parent is None:
             return
 
+        if attrib is None:
+            attrib = {}
+
         for c in parent:
             if c.tag == "path":
-                d = c.attrib["d"]
-                yield d, c.attrib
+                if "d" in c.attrib:
+                    d = c.attrib["d"]
+                    yield d, attrib | c.attrib
             elif c.tag == "symbol":
                 c1 = c.find("path")
                 d = c1.attrib["d"]
-                yield d, c.attrib
+                yield d, attrib | c.attrib
             elif c.tag == "use":
                 href = c.attrib["{xlink}href"]
                 # FIXME: modifying parent's attrib can be potentially dangerous.
@@ -245,11 +245,11 @@ class SVGPathIterator:
                     parent.attrib["xy"] = float(x), float(y)
 
                 for d, a in self._iter_path_attrib(self.defs.get(href[1:])):
-                    yield d, parent.attrib
+                    yield d, attrib | parent.attrib
                     # print(c1)
 
             elif c.tag == "g":
-                yield from self._iter_path_attrib(c)
+                yield from self._iter_path_attrib(c, c.attrib)
             else:
                 continue
 
@@ -341,7 +341,7 @@ class SVGMplPathIterator(SVGPathIterator):
 
             yield p, patch_prop
 
-    def get_path_collection(self):
+    def get_path_collection(self, use_alpha=False):
         paths = []
         fcl = []
         ecl = []
@@ -358,9 +358,15 @@ class SVGMplPathIterator(SVGPathIterator):
         # FIXME: when alpha is used for the facecolor and the ec is "none", it
         # fails wth some examples (Steps.svg, alphachannel.svg). So, alpha is
         # disabled for now.
-        pc = PathCollection(paths, facecolors=fcl, edgecolors=ecl, linewidths=lwl)
+        if use_alpha:
+            pc = PathCollection(paths, facecolors=fcl, edgecolors=ecl, linewidths=lwl,
+                                alpha=alphal)
+        else:
+            pc = PathCollection(paths, facecolors=fcl, edgecolors=ecl, linewidths=lwl)
+
         # alpha=alphal)
         return pc
+
 
 def get_paths_extents(paths):
     bb = [p.get_extents() for p in paths]
