@@ -1,14 +1,20 @@
 from matplotlib.patches import PathPatch
 from mpl_simple_svg_parser.svg_mpl_path_iterator import SVGMplPathIterator
 from mpl_simple_svg_parser.svg_gradient_hlper import GradientHelper
+from mpl_simple_svg_parser.svg_helper import get_svg_drawing_area
 
-# fn = "w3_svg_samples/car.svg"
-fn = "w3_svg_samples/python.svg"
+fn = "w3_svg_samples/rg1024_metal_effect.svg"
+# fn = "w3_svg_samples/pservers-grad-03-b.svg"
+# fn = "w3_svg_samples/juanmontoya_lingerie.svg"
+# fn = "w3_svg_samples/python.svg"
 # fn = "sphere.svg"
+# fn = "svg_pattern.svg"
+
 b_xmlstring = open(fn, "rb").read()
 # b_xmlstring = xmlstring.encode("ascii")
 s = SVGMplPathIterator(b_xmlstring, pico=True)
 u = s.xmlstring
+# open("t.svg", "w").write(u)
 
 # gradient = ET.fromstring(gradient_string)
 box = s.viewbox
@@ -35,7 +41,8 @@ for p1, d in vv:
 
     if (fc_orig := d.get("fc_orig")) and (m := p_url.match(fc_orig)):
         gradient_name = m.group(1)
-        arr = gradient_dict[gradient_name]
+        arr = gradient_dict.get(gradient_name, None)
+        if arr is None: break
         image_bbox = ImageBox(
             arr[::-1],
             # coords=p,

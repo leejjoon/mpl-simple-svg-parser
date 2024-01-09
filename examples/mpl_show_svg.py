@@ -80,23 +80,23 @@ def main():
             x1, y1, x2, y2 = svg_mpl_path_iterator.viewbox
             ax.set(xlim=(x1, x2), ylim=(y1, y2))
 
-        ax.transData.transform([[0, 0], [1, 0]])
-        px1, px2 = ax.transData.transform([[0, 0], [1, 0]])[:, 0]
-        # FIXME : for some reason, width seems to be overestimated by a factor of 0.75
-        data_unit_in_points = (px2 - px1) / ax.figure.dpi * 72 * 0.75
-
         paths = []
         pc = svg_mpl_path_iterator.get_path_collection()
-        ax.add_collection(pc)
+        # ax.add_collection(pc)
         # for i in range(len(svg_mpl_path_iterator.groups)):
         #     pc = svg_mpl_path_iterator.get_path_collection(i)
         #     ax.add_collection(pc)
         #     paths.extend(pc.get_paths())
 
-        open("t.svg", "w").write(svg_mpl_path_iterator.xmlstring)
+        # open("t.svg", "w").write(svg_mpl_path_iterator.xmlstring)
         if svg_mpl_path_iterator.viewbox is None:
             b0 = get_paths_extents(paths)
             ax.set(xlim=(b0.xmin, b0.xmax), ylim=(b0.ymin, b0.ymax))
+
+        ax.transData.transform([[0, 0], [1, 0]])
+        px1, px2 = ax.transData.transform([[0, 0], [1, 0]])[:, 0]
+        # FIXME : for some reason, width seems to be overestimated by a factor of 0.75
+        data_unit_in_points = (px2 - px1) / ax.figure.dpi * 72 * 0.75
 
         pc.set_linewidth(np.array(pc.get_linewidth()) * data_unit_in_points)
         ax.add_collection(pc)

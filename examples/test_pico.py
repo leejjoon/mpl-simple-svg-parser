@@ -63,18 +63,18 @@ pencil : px issue.
 
 input_file = "w3_svg_samples/jsonatom.svg"
 input_file = "jjj.svg"
-input_file = "t1.svg"
+input_file = "tt2.svg"
 
 failover_width = 1024
 failover_height = 1024
 
 b_xmlstring = open(input_file, "rb").read()
-try:
-    b_xmlstring = cairosvg.svg2svg(b_xmlstring)
-except ValueError:
-    b_xmlstring = cairosvg.svg2svg(b_xmlstring,
-                                   parent_width=failover_width,
-                                   parent_height=failover_height)
+# try:
+#     b_xmlstring = cairosvg.svg2svg(b_xmlstring)
+# except ValueError:
+#     b_xmlstring = cairosvg.svg2svg(b_xmlstring,
+#                                    parent_width=failover_width,
+#                                    parent_height=failover_height)
 
 # svg = SVG.parse(input_file)
 
@@ -109,6 +109,7 @@ if True:
 
     # Simplify things that do not simplify in isolation
     self.simplify(inplace=True)
+    print(self.svg_root[0], list(self.svg_root[0]))
 
     # Tidy up
     self.evenodd_to_nonzero_winding(inplace=True)
@@ -126,8 +127,8 @@ if True:
 
  # svg.clip_to_viewbox(inplace=True)
 output = svg.tostring(pretty_print=True)
+
 # open("tt.svg", "w").write(output)
-print(output)
 
 if True:
     from mpl_simple_svg_parser import SVGMplPathIterator, get_paths_extents
@@ -141,7 +142,7 @@ if True:
         x1, y1, x2, y2 = svg_mpl_path_iterator.viewbox
         ax.set(xlim=(x1, x2), ylim=(y1, y2))
 
-    pc = svg_mpl_path_iterator.get_path_collection(None)
+    pc = svg_mpl_path_iterator.get_path_collection()
     ax.add_collection(pc)
 
     plt.show()

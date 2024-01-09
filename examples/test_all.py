@@ -1,90 +1,147 @@
+"""
+The svg files are downloaded from https://dev.w3.org/SVG/tools/svgweb/samples/svg-files/
+"""
 import numpy as np
 import cairosvg
-from mpl_simple_svg_parser import SVGMplPathIterator, get_paths_extents
 import io
 import matplotlib.image as mpimg
+from matplotlib.gridspec import GridSpec
+import subprocess
 
-def plot_compare_svg(fig, fn):
-    xmlstring = open(fn, "rb").read()
-    # xmlstring = open("homer-simpson.svg").read()
-    svg_mpl_path_iterator = SVGMplPathIterator(xmlstring, svg2svg=True)
+from mpl_simple_svg_parser import SVGMplPathIterator
+from mpl_simple_svg_parser.svg_helper import draw_svg
 
-    from matplotlib.gridspec import GridSpec
-    gs = GridSpec(1, 3)
-    axs = [fig.add_subplot(_) for _ in gs]
+class RunInkscape:
+    def __init__(self, inkscape_path="inkscape"):
+        self.inkscape_path = inkscape_path
 
-    ax = axs[0]
+    def get_arr(self, svg_bytes):
+        result = subprocess.run([self.inkscape_path,
+                                 '--export-type=png', '--export-filename=-',
+                                 '--pipe'],
+                                input=svg_bytes,
+                                capture_output=True)
+
+        arr = mpimg.imread(io.BytesIO(result.stdout))
+        return arr
+
+
+def show_inkscape(ax, xmlbyte):
+    ax.set_aspect(True)
+    ax.set_title("inkscape")
+    # ax.axis("off")
+
+    arr = RunInkscape().get_arr(xmlbyte)
+    ax.imshow(arr)
+    # offsetbox = OffsetImage(arr)
+
+    # ab = AnnotationBbox(offsetbox, (0.5, 0.5), box_alignment=(0.5, 0.5),
+    #                     xycoords='data')
+    # ax.add_artist(ab)
+
+
+
+def show_cairosvg(ax, xmlbyte):
+    ax.set_aspect(True)
+    ax.set_title("cairosvg")
+    # ax.axis("off")
+
     try:
-        png = cairosvg.svg2png(xmlstring)
+        png = cairosvg.svg2png(xmlbyte)
     except ValueError:
         png = None
 
-    if png is not None:
-        arr = mpimg.imread(io.BytesIO(png))
-        ax.imshow(arr)
+    if png is None:
+        return
 
-    ax = axs[1]
+    arr = mpimg.imread(io.BytesIO(png))
 
+    ax.imshow(arr)
+    # offsetbox = OffsetImage(arr)
+
+    # ab = AnnotationBbox(offsetbox, (0.5, 0.5), box_alignment=(0.5, 0.5),
+    #                     xycoords='data')
+    # ax.add_artist(ab)
+
+
+
+def show_svg2svg(ax, xmlbyte):
     ax.set_aspect(True)
-    # we first set the viewport
-    if svg_mpl_path_iterator.viewbox is not None:
-        x1, y1, x2, y2 = svg_mpl_path_iterator.viewbox
-        ax.set(xlim=(x1, x2), ylim=(y1, y2))
+    # ax.axis("off")
+    ax.set_title("MPL:svg2svg")
 
-    ax.transData.transform([[0, 0], [1, 0]])
-    px1, px2 = ax.transData.transform([[0, 0], [1, 0]])[:, 0]
-    # FIXME : for some reason, width seems to be overestimated by a factor of 0.75
-    data_unit_in_points = (px2 - px1) / ax.figure.dpi * 72 * 0.75
+    svg_mpl_path_iterator = SVGMplPathIterator(xmlbyte, svg2svg=True)
 
-    paths = []
-    pc = svg_mpl_path_iterator.get_path_collection()
-    ax.add_collection(pc)
-    # for i in range(len(svg_mpl_path_iterator.groups)):
-    #     pc = svg_mpl_path_iterator.get_path_collection(i)
-    #     ax.add_collection(pc)
-    #     paths.extend(pc.get_paths())
+    draw_svg(ax, ax, ax.transData, svg_mpl_path_iterator)
 
-    if svg_mpl_path_iterator.viewbox is None:
-        b0 = get_paths_extents(paths)
-        ax.set(xlim=(b0.xmin, b0.xmax), ylim=(b0.ymin, b0.ymax))
+    x1, y1, w, h = svg_mpl_path_iterator.viewbox
+    ax.set(xlim=(x1, x1+w), ylim=(y1, y1+h))
+    # offsetbox = get_svg_drawing_area(ax, svg_mpl_path_iterator)
 
-    pc.set_linewidth(np.array(pc.get_linewidth()) * data_unit_in_points)
-    ax.add_collection(pc)
+    # ab = AnnotationBbox(offsetbox, (0.5, 0.5), box_alignment=(0.5, 0.5),
+    #                     xycoords='data')
+    # ax.add_artist(ab)
+
+
+
+def show_pico(ax, xmlbyte):
+    ax.set_aspect(True)
+    # ax.axis("off")
+    ax.set_title("MPL:svg2svg+pico")
 
     try:
-        svg_mpl_path_iterator = SVGMplPathIterator(xmlstring, svg2svg=True, pico=True)
+        svg_mpl_path_iterator = SVGMplPathIterator(xmlbyte, svg2svg=True, pico=True)
     except:
         svg_mpl_path_iterator = None
 
-    if svg_mpl_path_iterator is not None:
-        ax = axs[2]
-        ax.set_aspect(True)
-        # we first set the viewport
-        if svg_mpl_path_iterator.viewbox is not None:
-            x1, y1, x2, y2 = svg_mpl_path_iterator.viewbox
-            ax.set(xlim=(x1, x2), ylim=(y1, y2))
+    if svg_mpl_path_iterator is None:
+        return
 
-        ax.transData.transform([[0, 0], [1, 0]])
-        px1, px2 = ax.transData.transform([[0, 0], [1, 0]])[:, 0]
-        # FIXME : for some reason, width seems to be overestimated by a factor of 0.75
-        data_unit_in_points = (px2 - px1) / ax.figure.dpi * 72 * 0.75
+    draw_svg(ax, ax, ax.transData, svg_mpl_path_iterator)
 
-        paths = []
-        pc = svg_mpl_path_iterator.get_path_collection()
-        ax.add_collection(pc)
-        # for i in range(len(svg_mpl_path_iterator.groups)):
-        #     pc = svg_mpl_path_iterator.get_path_collection(i)
-        #     ax.add_collection(pc)
-        #     paths.extend(pc.get_paths())
+    x1, y1, w, h = svg_mpl_path_iterator.viewbox
+    ax.set(xlim=(x1, x1+w), ylim=(y1, y1+h))
 
-        if svg_mpl_path_iterator.viewbox is None:
-            b0 = get_paths_extents(paths)
-            ax.set(xlim=(b0.xmin, b0.xmax), ylim=(b0.ymin, b0.ymax))
+    # offsetbox = get_svg_drawing_area(ax, svg_mpl_path_iterator)
 
-        pc.set_linewidth(np.array(pc.get_linewidth()) * data_unit_in_points)
-        ax.add_collection(pc)
+    # ab = AnnotationBbox(offsetbox, (0.5, 0.5), box_alignment=(0.5, 0.5),
+    #                     xycoords='data')
+    # ax.add_artist(ab)
+
+
+def compare_svg_result(fig, fn):
+    xmlbyte = open(fn, "rb").read()
+
+    # xmlstring = open("homer-simpson.svg").read()
+
+    gs = GridSpec(1, 4)
+    axs = [fig.add_subplot(_) for _ in gs]
+
+    for ax in axs:
+        ax.xaxis.set_visible(False)
+        ax.yaxis.set_visible(False)
+        for sp in ax.spines.values(): sp.set_visible(False)
+
+    show_inkscape(axs[0], xmlbyte)
+
+    show_cairosvg(axs[1], xmlbyte)
+
+    show_svg2svg(axs[2], xmlbyte)
+
+    show_pico(axs[3], xmlbyte)
 
     return fig
+
+if False:
+    import matplotlib.pyplot as plt
+    fig = plt.figure(1, figsize=(8, 2.3))
+    fig.clf()
+    fig.subplots_adjust(left=0.01, right=0.99, bottom=0.05, hspace=0.05, wspace=0.05)
+    fig.patch.set_fc("gold")
+
+    fn = "w3_svg_samples/smile.svg"
+    compare_svg_result(fig, fn)
+    plt.show()
 
 
 if True:
@@ -93,21 +150,45 @@ if True:
     import glob
     from pathlib import Path
     import os.path
+    import toml
+
     rootdir = Path("w3_svg_samples")
     outdir = Path("w3_svg_samples_out_late_pico")
 
-    for fn in list(rootdir.glob("*.svg"))[:]:
+    svglist = []
+    for fn in list(sorted(rootdir.glob("*.svg")))[5:]:
         root, ext = os.path.splitext(os.path.basename(fn))
         print(f"[{root}]")
 
+        fig = plt.figure(1, figsize=(8, 2.3))
+        fig.clf()
+        fig.subplots_adjust(left=0.01, right=0.99, bottom=0.05, hspace=0.05, wspace=0.05)
+        fig.patch.set_fc("gold")
+
         # if True:
         try:
-            fig = Figure(figsize=(15, 5))
-            plot_compare_svg(fig, fn)
+            compare_svg_result(fig, fn)
             fig.savefig(outdir / f"{root}.png", dpi=130)
+            svglist.append((root, True))
         except:
             print("failed")
-            continue
+            svglist.append((root, False))
+
+    from collections import OrderedDict
+    # svgs = OrderedDict()
+    svgs = []
+    import yaml
+    for root, png_success in svglist:
+        svgname = f"{root}.svg"
+        pngname = f"{root}.png" if png_success else ""
+
+        # svgs[root] = {"svgname": svgname, "pngname": pngname}
+        svgs.append({"url": f"/assets/images/{root}.png",
+                     "image_path": f"/assets/images/{root}.png",
+                     "alt": f"rendering of {root}.svg",
+                     "title": f"{root}"})
+
+    yaml.dump(svgs, open("mpl-svg-test-w3c.yaml", "w"))
 
 # pico late fail
 """
