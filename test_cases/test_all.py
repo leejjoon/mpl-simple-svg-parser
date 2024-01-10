@@ -29,22 +29,14 @@ class RunInkscape:
 def show_inkscape(ax, xmlbyte):
     ax.set_aspect(True)
     ax.set_title("inkscape")
-    # ax.axis("off")
 
     arr = RunInkscape().get_arr(xmlbyte)
     ax.imshow(arr)
-    # offsetbox = OffsetImage(arr)
-
-    # ab = AnnotationBbox(offsetbox, (0.5, 0.5), box_alignment=(0.5, 0.5),
-    #                     xycoords='data')
-    # ax.add_artist(ab)
-
 
 
 def show_cairosvg(ax, xmlbyte):
     ax.set_aspect(True)
     ax.set_title("cairosvg")
-    # ax.axis("off")
 
     try:
         png = cairosvg.svg2png(xmlbyte)
@@ -55,38 +47,23 @@ def show_cairosvg(ax, xmlbyte):
         return
 
     arr = mpimg.imread(io.BytesIO(png))
-
     ax.imshow(arr)
-    # offsetbox = OffsetImage(arr)
-
-    # ab = AnnotationBbox(offsetbox, (0.5, 0.5), box_alignment=(0.5, 0.5),
-    #                     xycoords='data')
-    # ax.add_artist(ab)
-
 
 
 def show_svg2svg(ax, xmlbyte):
     ax.set_aspect(True)
-    # ax.axis("off")
     ax.set_title("MPL:svg2svg")
 
     svg_mpl_path_iterator = SVGMplPathIterator(xmlbyte, svg2svg=True)
 
-    draw_svg(ax, ax, ax.transData, svg_mpl_path_iterator)
+    draw_svg(ax, svg_mpl_path_iterator)
 
     x1, y1, w, h = svg_mpl_path_iterator.viewbox
     ax.set(xlim=(x1, x1+w), ylim=(y1, y1+h))
-    # offsetbox = get_svg_drawing_area(ax, svg_mpl_path_iterator)
-
-    # ab = AnnotationBbox(offsetbox, (0.5, 0.5), box_alignment=(0.5, 0.5),
-    #                     xycoords='data')
-    # ax.add_artist(ab)
-
 
 
 def show_pico(ax, xmlbyte):
     ax.set_aspect(True)
-    # ax.axis("off")
     ax.set_title("MPL:svg2svg+pico")
 
     try:
@@ -97,16 +74,10 @@ def show_pico(ax, xmlbyte):
     if svg_mpl_path_iterator is None:
         return
 
-    draw_svg(ax, ax, ax.transData, svg_mpl_path_iterator)
+    draw_svg(ax, svg_mpl_path_iterator)
 
     x1, y1, w, h = svg_mpl_path_iterator.viewbox
     ax.set(xlim=(x1, x1+w), ylim=(y1, y1+h))
-
-    # offsetbox = get_svg_drawing_area(ax, svg_mpl_path_iterator)
-
-    # ab = AnnotationBbox(offsetbox, (0.5, 0.5), box_alignment=(0.5, 0.5),
-    #                     xycoords='data')
-    # ax.add_artist(ab)
 
 
 def compare_svg_result(fig, fn):
@@ -132,19 +103,19 @@ def compare_svg_result(fig, fn):
 
     return fig
 
-if False:
+if True:
     import matplotlib.pyplot as plt
     fig = plt.figure(1, figsize=(8, 2.3))
     fig.clf()
     fig.subplots_adjust(left=0.01, right=0.99, bottom=0.05, hspace=0.05, wspace=0.05)
     fig.patch.set_fc("gold")
 
-    fn = "w3_svg_samples/smile.svg"
+    fn = "w3_svg_samples/python.svg"
     compare_svg_result(fig, fn)
     plt.show()
 
 
-if True:
+if False:
     import matplotlib.pyplot as plt
     from matplotlib.figure import Figure
     import glob

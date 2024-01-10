@@ -138,9 +138,9 @@ class SVGPathIterator:
             b_xmlstring = s
 
         if pico:
-            from . import picosvg
+            from . import picosvg_helper
 
-            svg = picosvg.SVG.fromstring(b_xmlstring)
+            svg = picosvg_helper.SVG.fromstring(b_xmlstring)
             svg = svg.topicosvg(
                 allow_text=True, drop_unsupported=False
             )

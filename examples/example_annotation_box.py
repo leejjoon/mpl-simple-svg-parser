@@ -1,3 +1,10 @@
+"""
+================================
+mpl-simple-svg-parser with AnnotationBbox
+================================
+
+"""
+
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import AnnotationBbox
 

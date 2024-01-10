@@ -1,3 +1,10 @@
+"""
+================================
+Demo how to use mpl-simple-svg-parser
+================================
+
+"""
+
 import matplotlib.pyplot as plt
 
 from mpl_simple_svg_parser import SVGMplPathIterator
