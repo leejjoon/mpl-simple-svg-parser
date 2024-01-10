@@ -29,7 +29,6 @@ __all__ = [
 import numpy as np
 import warnings
 import numpy as np
-# import io
 import cairosvg
 from svgpath2mpl import parse_path
 import xml.etree.ElementTree as ET
@@ -127,7 +126,6 @@ class SVGPathIterator:
                  failover_width=1024, failover_height=1024):
 
         if svg2svg:
-            # FIXME remove encode and decode by using bytes only.
             xmlstring = fix_empty_color_string(s)
             try:
                 b_xmlstring = cairosvg.svg2svg(xmlstring)
@@ -136,17 +134,12 @@ class SVGPathIterator:
                                                parent_width=failover_width,
                                                parent_height=failover_height)
 
-            # xmlstring = b_xmlstring.decode("ascii")
-            # xmlstring = remove_ns(b_xmlstring.decode("ascii"))
         else:
-            # xmlstring = remove_ns(s)
             b_xmlstring = s
-            # pass
-
-        # from picosvg.svg import SVG
-        from mpl_simple_svg_parser import picosvg
 
         if pico:
+            from . import picosvg
+
             svg = picosvg.SVG.fromstring(b_xmlstring)
             svg = svg.topicosvg(
                 allow_text=True, drop_unsupported=False
@@ -158,21 +151,6 @@ class SVGPathIterator:
             # xmlstring
 
         self.xmlstring = remove_ns(b_xmlstring)
-
-
-        # if svg2svg:
-        #     try:
-        #         b_xmlstring = cairosvg.svg2svg(xmlstring)
-        #     except ValueError:
-        #         b_xmlstring = cairosvg.svg2svg(xmlstring,
-        #                                        parent_width=failover_width,
-        #                                        parent_height=failover_height)
-
-        #     xmlstring = remove_ns(b_xmlstring.decode("ascii"))
-        # else:
-        #     xmlstring = remove_ns(s)
-
-
 
         self.svg = ET.fromstring(self.xmlstring)
 
@@ -281,8 +259,6 @@ class SVGMplPathIterator(SVGPathIterator):
             # warnings.warn(f"Ignoring unsupported facecolor: {fc}")
             fc_orig = fc
             fc = "none"
-            # ec = "c"
-            # alpha = 0.2
 
         linewidth = float(style.get('stroke-width', 1))
 
@@ -313,7 +289,6 @@ class SVGMplPathIterator(SVGPathIterator):
             matrix = np.array([[1, 0, 0],
                                [0, 1, 0],
                                [0, 0, 1]])
-
 
         return matrix
 
@@ -364,8 +339,33 @@ class SVGMplPathIterator(SVGPathIterator):
         else:
             pc = PathCollection(paths, facecolors=fcl, edgecolors=ecl, linewidths=lwl)
 
-        # alpha=alphal)
         return pc
+
+    def draw(self, ax, transform=None, xy=(0, 0), scale=1,
+             datalim_mode="viewbox"):
+        """
+        datalim_mode: 'viewbox' | 'path'
+        """
+
+        from .svg_helper import draw_svg
+        paths, patches = draw_svg(ax, self, transform=transform, xy=xy, scale=scale,
+                                  datalim_mode=datalim_mode)
+
+        # if autoscale_view:
+        #     ax.autoscale_view()
+
+        # for p in patches:
+        #     ax._update_patch_limits(p)
+
+        # path = Path(xy)
+        # self.update_from_path(path, ignore=ignore,
+        #                       updatex=updatex, updatey=updatey)
+
+    def get_drawing_area(self, ax, wmax=np.inf, hmax=np.inf):
+        from .svg_helper import get_svg_drawing_area
+        da = get_svg_drawing_area(ax, self, wmax=wmax, hmax=hmax)
+
+        return da
 
 
 def get_paths_extents(paths):
@@ -376,5 +376,3 @@ def get_paths_extents(paths):
     b0 = bb[0].union(bb)
 
     return b0
-
-

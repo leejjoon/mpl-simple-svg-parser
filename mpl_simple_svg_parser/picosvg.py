@@ -1,3 +1,7 @@
+"""
+A modified version of picosvg.SVG to better ignore exceptions and etc.
+"""
+
 import copy
 from lxml import etree  # pytype: disable=import-error
 from picosvg.svg_transform import Affine2D
