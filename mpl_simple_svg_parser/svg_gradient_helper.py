@@ -1,5 +1,5 @@
 import xml.etree.ElementTree as ET
-from mpl_simple_svg_parser.svg_mpl_path_iterator import remove_ns, SVGMplPathIterator
+from .svg_mpl_path_iterator import remove_ns
 
 
 # FIXME: for the pattern, we may create image from the cairosvg result. picosvg
@@ -48,8 +48,15 @@ class GradientHelper:
         import cairosvg
         png = cairosvg.svg2png(svg_string)
 
+        # from .cairo_numpy_surface import convert_to_numpy
+        # arr = convert_to_numpy(k)  / 255.
+        # FIXME for some reason, using convert_to_numpy produce incorrect array.
+
+        import cairosvg
         import matplotlib.image as mpimg
         import io
+
+        png = cairosvg.svg2png(k)
         arr = mpimg.imread(io.BytesIO(png))
 
         return arr
