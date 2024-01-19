@@ -11,7 +11,7 @@ from matplotlib.path import Path
 import mpl_visual_context.patheffects as pe
 from mpl_visual_context.image_box import ImageBox
 
-from .svg_gradient_hlper import GradientHelper
+from .svg_gradient_helper import GradientHelper
 
 p_url = re.compile(r"url\(#(.+)\)")
 

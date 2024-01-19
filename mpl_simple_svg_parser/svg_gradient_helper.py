@@ -18,7 +18,7 @@ class GradientHelper:
         else:
             return list(self.svg.svg.find("defs"))
 
-    def get(self, gradient_elem, add_all=False):
+    def get_svg(self, gradient_elem, add_all=False):
         template = """<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
              height="{height}" width="{width}">
           <defs>
@@ -40,8 +40,13 @@ class GradientHelper:
             defs.append(gradient_elem)
 
         k = ET.tostring(svg_template)
+
+        return k
+
+    @classmethod
+    def get_gradient_image(cls, svg_string):
         import cairosvg
-        png = cairosvg.svg2png(k)
+        png = cairosvg.svg2png(svg_string)
 
         import matplotlib.image as mpimg
         import io
@@ -49,20 +54,29 @@ class GradientHelper:
 
         return arr
 
-    def get_all(self):
-        gradient_dict = dict()
+    def get(self, gradient_elem, add_all=False):
+        k = self.get_svg(gradient_elem, add_all=add_all)
+        arr = self.get_gradient_image(k)
 
+        return arr
 
+    def get_all_svgs(self):
         for gradient_elem in self.list_gradient():
             gid = gradient_elem.attrib.get("id", None)
             if gid is None:
                 continue
             if gradient_elem.tag == "pattern":
                 # We should add only necessary elements, not all elements.
-                arr = self.get(gradient_elem, add_all=True)
+                k = self.get_svg(gradient_elem, add_all=True)
             else:
-                arr = self.get(gradient_elem, add_all=False)
+                k = self.get_svg(gradient_elem, add_all=False)
+            yield gid, k
+
+    def get_all(self):
+        gradient_dict = dict()
+
+        for gid, k in self.get_all_svgs():
+            arr = self.get_gradient_image(k)
             gradient_dict[gid] = arr
 
         return gradient_dict
-
