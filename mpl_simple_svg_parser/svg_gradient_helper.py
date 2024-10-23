@@ -1,15 +1,38 @@
+import numpy as np
 import xml.etree.ElementTree as ET
-from .svg_mpl_path_iterator import remove_ns
 
+from skia_gradient_array import GradientCanvas, Stops
+
+import cairosvg
+import matplotlib.image as mpimg
+import io
+
+# FIXME Now that we use skia surface by default, it would be better to
+# eliminate cairo_numpy_surface and simplify the code.
+
+from .cairo_numpy_surface import convert_to_numpy
+
+from .svg_xml_helper import (
+    remove_ns,
+    convert_svg_color_to_rgb_tuple,
+    parse_style,
+    convert_svg_affine_to_array,
+)
 
 # FIXME: for the pattern, we may create image from the cairosvg result. picosvg
 # support fo pattern s incorrect (w/ my modification) or limited.
 
-class GradientHelper:
-    def __init__(self, svg):
+from .gradient_param import Point, RGB, GradientParam, GradientParamRadial
+
+# A base class. It will create an svg element based on the etmplate and use cairosvg to render.
+
+class GradientHelperBase:
+    def __init__(self, svg, use_png=False):
         self.svg = svg # instance of SVGMplPathIterator
         box = self.svg.viewbox
         self.width, self.height = box[2], box[3]
+        self._gradient_cache = dict()
+        self._use_png = use_png
 
     def list_gradient(self):
         el = self.svg.svg.find("defs")
@@ -18,8 +41,7 @@ class GradientHelper:
         else:
             return list(self.svg.svg.find("defs"))
 
-    def get_svg(self, gradient_elem, add_all=False):
-        template = """<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+    _template = """<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
              height="{height}" width="{width}">
           <defs>
           </defs>
@@ -27,9 +49,19 @@ class GradientHelper:
         </svg>
         """
 
+    def get_svg(self, gradient_elem, add_all=None):
+        """
+        add_all: True | False | None. None means True only if its tag is "pattern".
+        """
+        if add_all is None:
+            if gradient_elem.tag == "pattern":
+                add_all = True
+            else:
+                add_all = False
+
         box = self.svg.viewbox
         v = dict(width=box[2], height=box[3], gid=gradient_elem.attrib["id"])
-        template = remove_ns(template.format(**v).encode("ascii"))
+        template = remove_ns(self._template.format(**v).encode("ascii"))
         svg_template = ET.fromstring(template)
         defs = svg_template.find("defs")
 
@@ -43,47 +75,131 @@ class GradientHelper:
 
         return k
 
-    @classmethod
-    def get_gradient_image(cls, svg_string):
-        import cairosvg
-        png = cairosvg.svg2png(svg_string)
+    def get_gradient_image_cairo(self, svg_string):
 
-        # from .cairo_numpy_surface import convert_to_numpy
-        # arr = convert_to_numpy(k)  / 255.
-        # FIXME for some reason, using convert_to_numpy produce incorrect array.
+        if self._use_png:
+            png = cairosvg.svg2png(svg_string)
+            arr = mpimg.imread(io.BytesIO(png))
+        else:
+            arr = convert_to_numpy(svg_string)
 
-        import cairosvg
-        import matplotlib.image as mpimg
-        import io
+        return arr[:, :, :]
 
-        png = cairosvg.svg2png(k)
-        arr = mpimg.imread(io.BytesIO(png))
-
-        return arr
-
-    def get(self, gradient_elem, add_all=False):
+    def get(self, gradient_elem, add_all=None):
         k = self.get_svg(gradient_elem, add_all=add_all)
-        arr = self.get_gradient_image(k)
+        arr = self.get_gradient_image_cairo(k)
 
         return arr
 
-    def get_all_svgs(self):
+    def iter_gradient_elem(self):
         for gradient_elem in self.list_gradient():
             gid = gradient_elem.attrib.get("id", None)
             if gid is None:
                 continue
-            if gradient_elem.tag == "pattern":
-                # We should add only necessary elements, not all elements.
-                k = self.get_svg(gradient_elem, add_all=True)
-            else:
-                k = self.get_svg(gradient_elem, add_all=False)
-            yield gid, k
+            yield gid, gradient_elem
 
-    def get_all(self):
-        gradient_dict = dict()
+    # def iter_all_svgs(self):
+    #     for gid, gradient_elem in self.iter_gradient_elem():
+    #         k = self.get_svg(gradient_elem)
+    #         yield gid, k
 
-        for gid, k in self.get_all_svgs():
-            arr = self.get_gradient_image(k)
-            gradient_dict[gid] = arr
+    def get_all(self, use_cache=True):
+        if use_cache:
+            gradient_dict = self._gradient_cache
+        else:
+            gradient_dict = dict()
+
+        for gid, gradient_elem in self.iter_gradient_elem():
+            if gid not in gradient_dict:
+                arr = self.get_gradient_from_elem(gid, gradient_elem)
+                gradient_dict[gid] = arr
+
+        # gradient_dict = self._get_all_gradients()
 
         return gradient_dict
+
+    def get_gradient_from_elem(self, el_id, el):
+        k = self.get_svg(el)
+        arr = self.get_gradient_image_cairo(k)
+
+        return arr
+
+    def get_gradient_param(self, el_id, el):
+        grad_attrib = el.attrib
+        grad_stops = list(el.iterfind("stop"))
+
+        try:
+            gradientTransform_ = convert_svg_affine_to_array(grad_attrib["gradientTransform"])
+        except:
+            # FIXME what is the correct behavior?
+            return
+            # gradientTransform_ = None
+            # print(grad_attrib)
+
+        oca_list = [] # offset, color, alpha
+        for a in grad_stops:
+            o = float(a.attrib["offset"])
+            if "style" in a.attrib:
+                style = parse_style(a.attrib["style"])
+            else:
+                style = a.attrib
+            c = convert_svg_color_to_rgb_tuple(style["stop-color"])
+            a = float(style.get("stop-opacity", 1))
+
+            oca_list.append((o, c, a))
+
+        if el.tag == "radialGradient":
+            c = Point(float(grad_attrib["cx"]), float(grad_attrib["cy"]))
+            fc = Point(float(grad_attrib.get("fx", c.x)),
+                       float(grad_attrib.get("fy", c.y)))
+
+            r = float(grad_attrib["r"])
+            fr = float(grad_attrib.get("fr", 0))
+
+            gp = GradientParamRadial(el_id, el.tag, oca_list, gradientTransform_,
+                                     c, fc, r, fr)
+
+        elif el.tag == "linearGradient":
+            pt1 = Point(float(grad_attrib["x1"]), float(grad_attrib["y1"]))
+            pt2 = Point(float(grad_attrib["x2"]), float(grad_attrib["y2"]))
+
+            gp = GradientParam(el_id, el.tag, oca_list, gradientTransform_, pt1, pt2)
+
+        else:
+            raise ValueError("No support for ", el.tag)
+
+        return gp
+
+    def iter_gradient_param(self):
+
+        for el_id , el in self.iter_gradient_elem():
+            yield self.get_gradient_param(el_id, el)
+
+
+
+class GradientHelper(GradientHelperBase):
+    def __init__(self, svg):
+        GradientHelperBase.__init__(self, svg, use_png=True)
+
+    def get_gradient_from_elem(self, el_id, el):
+        print("skia")
+
+        param = self.get_gradient_param(el_id, el)
+        w, h = int(self.width), int(self.height)
+
+        gradientTransform = list(np.ravel(param.gradientTransform[:-1].T))
+
+        stops = Stops(param.oca_list)
+        canvas = GradientCanvas(w, h)
+        if param.tag == "linearGradient":
+            arr = canvas.makeLinear(param.pt1, param.pt2, stops, gradientTransform).get_array()
+        elif param.tag == "radialGradient":
+            arr = canvas.makeRadial(param.fc, param.fr, param.c, param.r,
+                                    stops, gradientTransform).get_array()
+        else:
+            # We fall back to the Base class.
+            arr = GradientHelperBase.get_gradient_from_elem(self, el_id, el)
+            # arr = None
+            # raise ValueError("gradient not supported: ", param.tag)
+
+        return arr
