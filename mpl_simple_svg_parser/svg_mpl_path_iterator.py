@@ -37,52 +37,12 @@ import matplotlib.colors as mcolors
 from matplotlib.collections import PathCollection
 from matplotlib.transforms import Affine2D
 
-import re
-p_rgb_color = re.compile(r"rgb\((.+)\%,\s*(.+)\%,\s*(.+)\%\)")
-p_rgb_color_no_percent = re.compile(r"rgb\((.+),\s*(.+),\s*(.+)\)")
-p_hex_color = re.compile(r"(#[0-9a-fA-F]+)")
-
-p_namespace = re.compile(rb'xmlns="[^"]+"')
-p_namespace_xlink = re.compile(rb'xmlns\:xlink="[^"]+"')
-p_xlink_xlink = re.compile(r'xmlns\:xlink="[^"]+"')
-p_empty_color = re.compile(rb'fill\s*=\s*(\"\"|\'\')')
-
-p_matrix = re.compile(r"matrix\s*\((.+)\)")
-p_comma_or_space = re.compile(r"(,|(\s+))")
-p_key_value = re.compile(r"([^:\s]+)\s*:\s*(.+)")
-
-def remove_ns(xmlstring: bytes) -> bytes:
-    xmlstring = p_namespace.sub(b'', xmlstring, count=1)
-    xmlstring = p_namespace_xlink.sub(b'xmlns:xlink="xlink"', xmlstring, count=1)
-    return xmlstring
-
-def fix_empty_color_string(xmlstring: bytes) -> bytes:
-    """
-    cairosvg seems to remove object with 'fill=""'. This replace it with 'fill="#000000"'.
-    """
-    xmlstring = p_empty_color.sub(b'fill="#000000"', xmlstring, count=0)
-    return xmlstring
-
-def parse_style(style_string):
-    style_dict = dict()
-    for s in style_string.split(";"):
-        if m := p_key_value.match(s.strip()):
-            k, v = m.groups()
-            style_dict[k] = v
-
-    return style_dict
-
-def convert_svg_color_to_mpl_color(color_string, default_color="none"):
-    """
-    If possible, convert rgb definition in svg color to 3-element numpy array normalized to 1. Return the original string otherwise.
-    """
-    if m := p_rgb_color.search(color_string):
-        return np.array([float(_)/100. for _ in m.groups()])
-    if m := p_rgb_color_no_percent.search(color_string):
-        return np.array([float(_)/256. for _ in m.groups()])
-
-    return default_color if color_string == "" else color_string
-
+from .svg_xml_helper import (convert_svg_color_to_mpl_color,
+                             fix_empty_color_string,
+                             parse_style,
+                             convert_svg_affine_to_array,
+                             remove_ns)
+from .svg_gradient_helper import GradientHelper
 
 def get_mpl_colors(attrib, style, fc_default="k", ec_default="none"):
     """
@@ -157,6 +117,7 @@ class SVGPathIterator:
         self.defs = self.parse_defs()
 
         self.viewbox = self.parse_viewbox()
+        self._gradient_helper = None
 
     def parse_viewbox(self):
         if "viewBox" in self.svg.attrib:
@@ -277,14 +238,7 @@ class SVGMplPathIterator(SVGPathIterator):
         st = attrib.get("transform", "")
 
         if st.startswith('matrix'):
-            m = p_matrix.match(st)
-            coords = m.groups()[0]
-            if "," in coords:
-                cc = coords.split(",")
-            else:
-                cc = coords.split()
-            matrix = np.array([float(_) for _ in cc]).reshape(-1, 2).T
-            matrix = np.vstack([matrix, [0, 0, 1]])
+            matrix = convert_svg_affine_to_array(st)
         else:
             matrix = np.array([[1, 0, 0],
                                [0, 1, 0],
@@ -341,15 +295,24 @@ class SVGMplPathIterator(SVGPathIterator):
 
         return pc
 
+    def get_gradient_helper(self):
+        if self._gradient_helper is None:
+            self._gradient_helper = GradientHelper(self)
+
+        return self._gradient_helper
+
+
     def draw(self, ax, transform=None, xy=(0, 0), scale=1,
-             datalim_mode="viewbox"):
+             datalim_mode="viewbox",
+             do_gradient=True):
         """
         datalim_mode: 'viewbox' | 'path'
         """
 
         from .svg_helper import draw_svg
         paths, patches = draw_svg(ax, self, transform=transform, xy=xy, scale=scale,
-                                  datalim_mode=datalim_mode)
+                                  datalim_mode=datalim_mode,
+                                  do_gradient=do_gradient)
 
         # if autoscale_view:
         #     ax.autoscale_view()
@@ -361,9 +324,11 @@ class SVGMplPathIterator(SVGPathIterator):
         # self.update_from_path(path, ignore=ignore,
         #                       updatex=updatex, updatey=updatey)
 
-    def get_drawing_area(self, ax, wmax=np.inf, hmax=np.inf):
+    def get_drawing_area(self, ax, wmax=np.inf, hmax=np.inf,
+                         do_gradient=True):
         from .svg_helper import get_svg_drawing_area
-        da = get_svg_drawing_area(ax, self, wmax=wmax, hmax=hmax)
+        da = get_svg_drawing_area(ax, self, wmax=wmax, hmax=hmax,
+                                  do_gradient=do_gradient)
 
         return da
 
