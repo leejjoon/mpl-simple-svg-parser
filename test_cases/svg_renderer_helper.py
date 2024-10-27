@@ -1,6 +1,6 @@
+"""Helper class to render svg with different renderer (inkscape, cairosvg, mpl-simple-svg-parser) in matplotlib.
 """
-The svg files are downloaded from https://dev.w3.org/SVG/tools/svgweb/samples/svg-files/
-"""
+
 import numpy as np
 import cairosvg
 import io
@@ -55,6 +55,7 @@ def show_svg2svg(ax, xmlbyte):
     ax.set_title("MPL:svg2svg")
 
     svg_mpl_path_iterator = SVGMplPathIterator(xmlbyte, svg2svg=True)
+    open("cairo.svg", "wb").write(svg_mpl_path_iterator.xmlstring)
 
     draw_svg(ax, svg_mpl_path_iterator)
 
@@ -70,6 +71,7 @@ def show_pico(ax, xmlbyte):
         svg_mpl_path_iterator = SVGMplPathIterator(xmlbyte, svg2svg=True, pico=True)
     except:
         svg_mpl_path_iterator = None
+    open("pico.svg", "wb").write(svg_mpl_path_iterator.xmlstring)
 
     if svg_mpl_path_iterator is None:
         return
@@ -102,66 +104,3 @@ def compare_svg_result(fig, fn):
     show_pico(axs[3], xmlbyte)
 
     return fig
-
-if True:
-    import matplotlib.pyplot as plt
-    fig = plt.figure(1, figsize=(8, 2.3))
-    fig.clf()
-    fig.subplots_adjust(left=0.01, right=0.99, bottom=0.05, hspace=0.05, wspace=0.05)
-    fig.patch.set_fc("gold")
-
-    fn = "w3_svg_samples/python.svg"
-    compare_svg_result(fig, fn)
-    plt.show()
-
-
-if False:
-    import matplotlib.pyplot as plt
-    from matplotlib.figure import Figure
-    import glob
-    from pathlib import Path
-    import os.path
-    import toml
-
-    rootdir = Path("w3_svg_samples")
-    outdir = Path("w3_svg_samples_out_late_pico")
-
-    svglist = []
-    for fn in list(sorted(rootdir.glob("*.svg")))[5:]:
-        root, ext = os.path.splitext(os.path.basename(fn))
-        print(f"[{root}]")
-
-        fig = plt.figure(1, figsize=(8, 2.3))
-        fig.clf()
-        fig.subplots_adjust(left=0.01, right=0.99, bottom=0.05, hspace=0.05, wspace=0.05)
-        fig.patch.set_fc("gold")
-
-        # if True:
-        try:
-            compare_svg_result(fig, fn)
-            fig.savefig(outdir / f"{root}.png", dpi=130)
-            svglist.append((root, True))
-        except:
-            print("failed")
-            svglist.append((root, False))
-
-    from collections import OrderedDict
-    # svgs = OrderedDict()
-    svgs = []
-    import yaml
-    for root, png_success in svglist:
-        svgname = f"{root}.svg"
-        pngname = f"{root}.png" if png_success else ""
-
-        # svgs[root] = {"svgname": svgname, "pngname": pngname}
-        svgs.append({"url": f"/assets/images/{root}.png",
-                     "image_path": f"/assets/images/{root}.png",
-                     "alt": f"rendering of {root}.svg",
-                     "title": f"{root}"})
-
-    yaml.dump(svgs, open("mpl-svg-test-w3c.yaml", "w"))
-
-# pico late fail
-"""
-preserve
-"""
