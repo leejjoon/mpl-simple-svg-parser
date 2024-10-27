@@ -6,6 +6,7 @@ from skia_gradient_array import GradientCanvas, Stops
 import cairosvg
 import matplotlib.image as mpimg
 import io
+import logging
 
 # FIXME Now that we use skia surface by default, it would be better to
 # eliminate cairo_numpy_surface and simplify the code.
@@ -129,12 +130,11 @@ class GradientHelperBase:
         grad_stops = list(el.iterfind("stop"))
 
         try:
-            gradientTransform_ = convert_svg_affine_to_array(grad_attrib["gradientTransform"])
+            gradientTransform_ = (convert_svg_affine_to_array(grad_attrib["gradientTransform"])
+                                  if "gradientTransform" in grad_attrib else None)
         except:
             # FIXME what is the correct behavior?
             return
-            # gradientTransform_ = None
-            # print(grad_attrib)
 
         oca_list = [] # offset, color, alpha
         for a in grad_stops:
@@ -166,7 +166,9 @@ class GradientHelperBase:
             gp = GradientParam(el_id, el.tag, oca_list, gradientTransform_, pt1, pt2)
 
         else:
-            raise ValueError("No support for ", el.tag)
+            logging.warn(f"No support for {el.tag}")
+            return None
+            # raise ValueError("No support for ", el.tag)
 
         return gp
 
@@ -177,17 +179,21 @@ class GradientHelperBase:
 
 
 
+# Skia base gradient gneerator
 class GradientHelper(GradientHelperBase):
     def __init__(self, svg):
         GradientHelperBase.__init__(self, svg, use_png=True)
 
     def get_gradient_from_elem(self, el_id, el):
-        print("skia")
 
         param = self.get_gradient_param(el_id, el)
+        if param is None:
+            return None
+
         w, h = int(self.width), int(self.height)
 
-        gradientTransform = list(np.ravel(param.gradientTransform[:-1].T))
+        gradientTransform = (None if param.gradientTransform is None
+                             else list(np.ravel(param.gradientTransform[:-1].T)))
 
         stops = Stops(param.oca_list)
         canvas = GradientCanvas(w, h)
@@ -197,9 +203,7 @@ class GradientHelper(GradientHelperBase):
             arr = canvas.makeRadial(param.fc, param.fr, param.c, param.r,
                                     stops, gradientTransform).get_array()
         else:
-            # We fall back to the Base class.
+            logging.debug("Skia backend does not support {param.tag} tag. Falling back to the default backend.")
             arr = GradientHelperBase.get_gradient_from_elem(self, el_id, el)
-            # arr = None
-            # raise ValueError("gradient not supported: ", param.tag)
 
         return arr

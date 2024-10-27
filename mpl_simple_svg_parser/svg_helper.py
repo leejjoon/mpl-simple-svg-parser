@@ -80,7 +80,8 @@ def _draw_svg_w_gradient(ax, drawing_area, transform, svg_mpl_path_iterator, sca
     return paths, patches
 
 def _draw_svg(ax, drawing_area, transform, svg_mpl_path_iterator, scale=1, xy=(0, 0),
-              do_gradient=False, use_path_extent=False):
+              do_gradient=False, use_path_extent=False,
+              hatch_unsupported_gradient=False):
 
     if do_gradient:
         gh = svg_mpl_path_iterator.get_gradient_helper()
@@ -90,12 +91,13 @@ def _draw_svg(ax, drawing_area, transform, svg_mpl_path_iterator, scale=1, xy=(0
 
     return _draw_svg_w_gradient(ax, drawing_area, transform, svg_mpl_path_iterator,
                                 scale=scale, xy=xy, gradient_dict=gradient_dict,
-                                use_path_extent=use_path_extent)
+                                use_path_extent=use_path_extent,
+                                hatch_unsupported_gradient=hatch_unsupported_gradient)
 
 
 def draw_svg(ax, svg_mpl_path_iterator, transform=None, xy=(0, 0), scale=1,
              datalim_mode="viewbox",
-             do_gradient=False):
+             do_gradient=True):
     """
 
     datalim_mode: 'viewbox' | 'path' | None
