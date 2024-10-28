@@ -26,6 +26,8 @@ __all__ = [
 # issue : 
 # + cairosvg convert ellipse to path but does not close it. When picosvg convert the stroke to fill, this may introduce incorrect fill combined with clippath.
 
+from io import BytesIO
+
 import numpy as np
 import warnings
 import numpy as np
@@ -36,6 +38,9 @@ from matplotlib.patches import PathPatch
 import matplotlib.colors as mcolors
 from matplotlib.collections import PathCollection
 from matplotlib.transforms import Affine2D
+
+# to handle ExntitiesForbidden exception
+from defusedxml.common import EntitiesForbidden
 
 from .svg_xml_helper import (convert_svg_color_to_mpl_color,
                              fix_empty_color_string,
@@ -88,7 +93,16 @@ class SVGPathIterator:
         if svg2svg:
             xmlstring = fix_empty_color_string(s)
             try:
-                b_xmlstring = cairosvg.svg2svg(xmlstring)
+                try:
+                    b_xmlstring = cairosvg.svg2svg(xmlstring)
+                # cairosvg.svg2svg does not support Enetities. We simply rewrite the input
+                # with ET.
+                except EntitiesForbidden:
+                    bb = BytesIO()
+                    ET.ElementTree(ET.fromstring(xmlstring)).write(bb)
+                    xmlstring2 = bb.getvalue()
+                    b_xmlstring = cairosvg.svg2svg(xmlstring2)
+
             except ValueError:
                 b_xmlstring = cairosvg.svg2svg(xmlstring,
                                                parent_width=failover_width,
