@@ -1,3 +1,39 @@
+- alt: rendering of 410.svg
+  image_path: /assets/images/410.png
+  title: '410'
+  url: /assets/images/410.png
+- alt: rendering of AJ_Digital_Camera.svg
+  image_path: /assets/images/AJ_Digital_Camera.png
+  title: AJ_Digital_Camera
+  url: /assets/images/AJ_Digital_Camera.png
+- alt: rendering of DroidSans-Bold.svg
+  image_path: /assets/images/DroidSans-Bold.png
+  title: DroidSans-Bold
+  url: /assets/images/DroidSans-Bold.png
+- alt: rendering of DroidSans.svg
+  image_path: /assets/images/DroidSans.png
+  title: DroidSans
+  url: /assets/images/DroidSans.png
+- alt: rendering of DroidSansMono.svg
+  image_path: /assets/images/DroidSansMono.png
+  title: DroidSansMono
+  url: /assets/images/DroidSansMono.png
+- alt: rendering of DroidSerif-Bold.svg
+  image_path: /assets/images/DroidSerif-Bold.png
+  title: DroidSerif-Bold
+  url: /assets/images/DroidSerif-Bold.png
+- alt: rendering of DroidSerif-BoldItalic.svg
+  image_path: /assets/images/DroidSerif-BoldItalic.png
+  title: DroidSerif-BoldItalic
+  url: /assets/images/DroidSerif-BoldItalic.png
+- alt: rendering of DroidSerif-Italic.svg
+  image_path: /assets/images/DroidSerif-Italic.png
+  title: DroidSerif-Italic
+  url: /assets/images/DroidSerif-Italic.png
+- alt: rendering of DroidSerif-Regular.svg
+  image_path: /assets/images/DroidSerif-Regular.png
+  title: DroidSerif-Regular
+  url: /assets/images/DroidSerif-Regular.png
 - alt: rendering of Steps.svg
   image_path: /assets/images/Steps.png
   title: Steps
